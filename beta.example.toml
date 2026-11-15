@@ -28,6 +28,7 @@ enable_directory_check = false
 directory_base_url = "https://directory.example.test/v1/organisations"
 auth_header = "Authorization"
 token_env = "DIRECTORY_API_TOKEN"
+proxy_env = "BETA_PROXY_URL"
 request_delay_s = 0.5
 doh_url = "https://dns.google/resolve"
 enable_doh = true

@@ -8,12 +8,19 @@ import sys
 
 from ngo_mail_catch.core.config import load_config
 from ngo_mail_catch.core.store import (
+    BETA_STAGES,
+    advance_beta_stage,
     open_db,
+    rank_beta_contacts,
     sync_alpha_bridge,
     unified_dashboard,
     upsert_beta_contact,
 )
-from ngo_mail_catch.correlator.verifier import scan_contact_source
+from ngo_mail_catch.correlator.verifier import (
+    check_mailbox_dns,
+    correlate_existing_contacts,
+    scan_contact_source,
+)
 from ngo_mail_catch.parser.extract import filter_registry_contacts
 
 
@@ -36,6 +43,22 @@ def main(argv: list[str] | None = None) -> int:
     p_scan.add_argument("--no-doh", action="store_true")
     p_scan.add_argument("--directory-check", action="store_true")
     p_scan.add_argument("--dry-run", action="store_true")
+
+    p_cor = sub.add_parser("correlate", help="Backfill directory match (gs_id, website_null) for existing beta contacts")
+    p_cor.add_argument("--limit", type=int, default=25)
+
+    p_rank = sub.add_parser("rank", help="List filtered Track Beta candidates")
+    p_rank.add_argument("--iso", default=None)
+    p_rank.add_argument("--stage", default=None)
+    p_rank.add_argument("--limit", type=int, default=20)
+
+    p_stg = sub.add_parser("set-stage", help="Update lifecycle stage for a Track Beta candidate")
+    p_stg.add_argument("--target", required=True, help="email_domain, contact_email, or registry_id")
+    p_stg.add_argument("--stage", required=True, choices=BETA_STAGES)
+    p_stg.add_argument("--notes", default=None)
+
+    p_pre = sub.add_parser("preflight", help="Verify live MX, SPF, and DMARC records via DoH")
+    p_pre.add_argument("--domain", required=True)
 
     p_ing = sub.add_parser("ingest-contacts", help="Ingest JSON array of public registry contact records")
     p_ing.add_argument("--file", required=True)
@@ -94,6 +117,23 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "scan-source":
         report = scan_contact_source(cfg, db, dry_run=args.dry_run)
         print(json.dumps(report, indent=2, ensure_ascii=False))
+        return 0
+
+    if args.cmd == "correlate":
+        print(json.dumps(correlate_existing_contacts(cfg, db, limit=args.limit), indent=2))
+        return 0
+
+    if args.cmd == "rank":
+        print(json.dumps(rank_beta_contacts(db, iso3=args.iso, stage=args.stage, limit=args.limit), indent=2, ensure_ascii=False))
+        return 0
+
+    if args.cmd == "set-stage":
+        updated = advance_beta_stage(db, args.target, args.stage, notes=args.notes)
+        print(json.dumps({"email_domain": updated["email_domain"], "stage": updated["stage"], "notes": updated["notes"]}, indent=2))
+        return 0
+
+    if args.cmd == "preflight":
+        print(json.dumps(check_mailbox_dns(args.domain, doh_url=cfg.correlator.doh_url, timeout_s=cfg.correlator.timeout_s, user_agent=cfg.user_agent), indent=2))
         return 0
 
     if args.cmd == "ingest-contacts":

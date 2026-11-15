@@ -13,6 +13,10 @@ BETA_STAGES = (
     "dns_dead",
     "rdap_available",
     "verified_candidate",
+    "domain_registered",
+    "mailbox_ready",
+    "claimed_goodstack",
+    "approved_claude",
     "archived",
 )
 
@@ -226,3 +230,54 @@ def unified_dashboard(db: sqlite3.Connection, alpha_repo_path: str = "") -> dict
         },
         "cross_track_domain_overlap": overlap,
     }
+
+
+def rank_beta_contacts(
+    db: sqlite3.Connection,
+    *,
+    iso3: str | None = None,
+    stage: str | None = None,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    clauses = ["1=1"]
+    params: list[Any] = []
+    if iso3:
+        clauses.append("iso3=?")
+        params.append(iso3.upper())
+    if stage:
+        clauses.append("stage=?")
+        params.append(stage)
+    params.append(limit)
+    sql = f"""
+        SELECT id, iso3, country, registry_code, registry_id, name,
+               contact_email, email_domain, gs_id, gs_website_null,
+               rdap_status, stage, notes, updated_at
+        FROM beta_contacts
+        WHERE {' AND '.join(clauses)}
+        ORDER BY gs_website_null DESC, (gs_id IS NOT NULL) DESC, id ASC
+        LIMIT ?
+    """
+    return [dict(r) for r in db.execute(sql, params).fetchall()]
+
+
+def advance_beta_stage(
+    db: sqlite3.Connection,
+    identifier: str,
+    new_stage: str,
+    notes: str | None = None,
+) -> dict[str, Any]:
+    if new_stage not in BETA_STAGES:
+        raise ValueError(f"Unsupported beta stage: {new_stage}. Valid: {BETA_STAGES}")
+    row = db.execute(
+        "SELECT * FROM beta_contacts WHERE email_domain=? OR contact_email=? OR registry_id=?",
+        (identifier.lower(), identifier.lower(), identifier),
+    ).fetchone()
+    if not row:
+        raise KeyError(f"Beta target not found: {identifier}")
+    now = utcnow()
+    if notes is not None:
+        db.execute("UPDATE beta_contacts SET stage=?, notes=?, updated_at=? WHERE id=?", (new_stage, notes, now, row["id"]))
+    else:
+        db.execute("UPDATE beta_contacts SET stage=?, updated_at=? WHERE id=?", (new_stage, now, row["id"]))
+    db.commit()
+    return dict(db.execute("SELECT * FROM beta_contacts WHERE id=?", (row["id"],)).fetchone())

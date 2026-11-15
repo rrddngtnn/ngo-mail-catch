@@ -34,6 +34,7 @@ class CorrelatorConfig:
     auth_header: str = "Authorization"
     auth_prefix: str = ""
     token_env: str = "DIRECTORY_API_TOKEN"
+    proxy_env: str = "BETA_PROXY_URL"
     origin: str = ""
     referer: str = ""
     request_delay_s: float = 0.5
@@ -125,6 +126,7 @@ def load_config(
         auth_header=cor_sec.get("auth_header", "Authorization"),
         auth_prefix=cor_sec.get("auth_prefix", ""),
         token_env=cor_sec.get("token_env", "DIRECTORY_API_TOKEN"),
+        proxy_env=cor_sec.get("proxy_env", "BETA_PROXY_URL"),
         origin=os.environ.get("DIRECTORY_ORIGIN") or cor_sec.get("origin", ""),
         referer=os.environ.get("DIRECTORY_REFERER") or cor_sec.get("referer", ""),
         request_delay_s=float(cor_sec.get("request_delay_s", 0.5)),

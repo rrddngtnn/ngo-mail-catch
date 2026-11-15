@@ -1,6 +1,6 @@
 export PYTHONPATH := packages
 
-.PHONY: test hygiene doctor status unified
+.PHONY: test hygiene doctor status scan-source correlate rank preflight sync-alpha unified
 
 test:
 	python3 -m pytest
@@ -13,6 +13,21 @@ doctor:
 
 status:
 	python3 -m ngo_mail_catch.cli status
+
+scan-source:
+	python3 -m ngo_mail_catch.cli scan-source
+
+correlate:
+	python3 -m ngo_mail_catch.cli correlate --limit $${N:-25}
+
+rank:
+	python3 -m ngo_mail_catch.cli rank --limit $${N:-20}
+
+preflight:
+	python3 -m ngo_mail_catch.cli preflight --domain $(DOMAIN)
+
+sync-alpha:
+	python3 -m ngo_mail_catch.cli sync-alpha
 
 unified:
 	python3 -m ngo_mail_catch.cli unified-dashboard

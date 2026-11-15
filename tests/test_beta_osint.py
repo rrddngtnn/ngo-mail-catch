@@ -162,3 +162,52 @@ rdap_cache_path = "{tmp_path / 'iana.json'}"
         assert rep2["hits"][0]["registry_id"] == "3548"
     finally:
         srv.shutdown()
+
+
+def test_beta_correlate_backfill_stage_and_preflight(tmp_path: Path):
+    from ngo_mail_catch.core.store import advance_beta_stage, rank_beta_contacts, upsert_beta_contact
+    from ngo_mail_catch.correlator.verifier import check_mailbox_dns, correlate_existing_contacts
+
+    srv = HTTPServer(("127.0.0.1", 0), _BetaMockHandler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        base = f"http://127.0.0.1:{srv.server_port}"
+        cfg_file = tmp_path / "beta.toml"
+        cfg_file.write_text(
+            f"""[core]
+db_path = "{tmp_path / 'beta.sqlite'}"
+
+[correlator]
+directory_base_url = "{base}/v1/organisations"
+request_delay_s = 0.0
+doh_url = "{base}/resolve"
+""",
+            encoding="utf-8",
+        )
+        cfg = load_config(cfg_file)
+        db = open_db(cfg.db_path)
+        upsert_beta_contact(db, {
+            "iso3": "BGD",
+            "country": "Bangladesh",
+            "registry_code": "NAB",
+            "registry_id": "3548",
+            "name": "Orphan Contact Trust",
+            "contact_email": "info@orphancontact.org",
+            "email_domain": "orphancontact.org",
+            "gs_id": None,
+            "gs_website_null": True,
+            "rdap_status": "AVAILABLE(404)",
+        })
+        res = correlate_existing_contacts(cfg, db, limit=10)
+        assert res["matched_unclaimed"] == 1
+        ranked = rank_beta_contacts(db, iso3="BGD")
+        assert ranked[0]["gs_id"] == "gs_org_101"
+        assert ranked[0]["stage"] == "gs_matched_web_null"
+
+        updated = advance_beta_stage(db, "orphancontact.org", "mailbox_ready", notes="MX/SPF live")
+        assert updated["stage"] == "mailbox_ready"
+
+        dns_rep = check_mailbox_dns("orphancontact.org", doh_url=f"{base}/resolve")
+        assert dns_rep["ready"] is False
+    finally:
+        srv.shutdown()
