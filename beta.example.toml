@@ -1,0 +1,38 @@
+# Copy to private/beta.toml (never commit private files or live tokens)
+
+[core]
+db_path = "private/beta_contacts.sqlite"
+bridge_file = "../ngo-domain-claim/private/alpha_bridge.json"
+alpha_repo_path = "../ngo-domain-claim"
+user_agent = "ngo-mail-catch/0.2 (public-registry-research)"
+
+[source]
+kind = "odata_json"
+url = "https://registry.example.test/Organisations"
+iso3 = "NZL"
+country = "New Zealand"
+registry_code = "DIA"
+odata_filter = "RegistrationStatus eq 'Registered' and WebSiteURL eq null and EMailAddress1 ne null"
+odata_select = "Name,CharityRegistrationNumber,EMailAddress1,WebSiteURL"
+page_size = 200
+max_pages = 2
+
+[source.field_map]
+name = "Name"
+registry_id = "CharityRegistrationNumber"
+email = "EMailAddress1"
+website = "WebSiteURL"
+
+[correlator]
+enable_directory_check = false
+directory_base_url = "https://directory.example.test/v1/organisations"
+auth_header = "Authorization"
+token_env = "DIRECTORY_API_TOKEN"
+request_delay_s = 0.5
+doh_url = "https://dns.google/resolve"
+enable_doh = true
+iana_bootstrap_url = "https://data.iana.org/rdap/dns.json"
+rdap_cache_path = "private/iana_rdap_dns.json"
+rdap_cache_ttl_s = 604800
+timeout_s = 10
+workers = 8

@@ -1,20 +1,33 @@
 # ngo-mail-catch (Track Beta & Unified Dashboard)
 
-Public charity registry contact-domain parser (`website: null` surface) and unified cross-track correlation dashboard paired with [`ngo-domain-claim`](../ngo-domain-claim) (Track Alpha).
+Configurable public charity registry contact-domain OSINT auditor (for `website`-absent records) and unified cross-track dashboard paired with [`ngo-domain-claim`](../ngo-domain-claim) via `ngo-recon-bridge/v1`.
 
-## Architecture
+## Install
 
-1. **Track Alpha (`../ngo-domain-claim`)**: Indexes directory records that publish an explicit `website` URL, scores humanitarian LMIC candidates, checks Wayback CDX history, and exports `private/alpha_bridge.json`.
-2. **Track Beta (`ngo-mail-catch`)**: Parses public regulator contact extracts (filtering out freemail providers like Gmail/Yahoo/Outlook), isolates custom contact domains on records where `website` is null, and syncs `alpha_bridge.json` to prevent cross-track collision and monitor both pipelines from one command.
+```bash
+python3 -m pip install -e ".[dev]"
+cp beta.example.toml private/beta.toml
+```
 
 ## Quickstart
 
 ```bash
 export PYTHONPATH=packages
 
-# Sync Track Alpha bridge snapshot
-python3 -m ngo_mail_catch.cli sync-alpha --bridge-file ../ngo-domain-claim/private/alpha_bridge.json
+# Inspect resolved config and SQLite readiness
+python3 -m ngo_mail_catch.cli --config private/beta.toml doctor
 
-# Render combined Alpha + Beta progress dashboard
-python3 -m ngo_mail_catch.cli unified-dashboard
+# Run automated contact-domain scan (OData/CSV/Text -> DNS -> IANA RDAP -> SQLite)
+python3 -m ngo_mail_catch.cli --config private/beta.toml scan-source
+
+# Sync Track Alpha bridge snapshot and render combined dashboard
+python3 -m ngo_mail_catch.cli --config private/beta.toml sync-alpha
+python3 -m ngo_mail_catch.cli --config private/beta.toml unified-dashboard
+```
+
+## Tests & hygiene gate
+
+```bash
+make test
+make hygiene
 ```

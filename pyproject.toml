@@ -4,11 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ngo-mail-catch"
-version = "0.1.0"
-description = "Track Beta: Public registry contact-domain extraction (website: null records) and unified Alpha/Beta correlation."
+version = "0.2.0"
+description = "Configurable public charity registry contact-domain OSINT auditor (website-absent records) and cross-track bridge dashboard."
 requires-python = ">=3.10"
 license = {text = "MIT"}
-dependencies = []
+dependencies = [
+    "tomli>=2; python_version < '3.11'",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

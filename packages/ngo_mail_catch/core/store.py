@@ -167,7 +167,7 @@ def sync_alpha_bridge(db: sqlite3.Connection, payload: dict[str, Any]) -> int:
     return len(records)
 
 
-def unified_dashboard(db: sqlite3.Connection) -> dict[str, Any]:
+def unified_dashboard(db: sqlite3.Connection, alpha_repo_path: str = "") -> dict[str, Any]:
     alpha_total = db.execute("SELECT COUNT(*) AS c FROM alpha_mirror").fetchone()["c"]
     alpha_stages = {
         r["stage"]: r["c"]
@@ -213,13 +213,13 @@ def unified_dashboard(db: sqlite3.Connection) -> dict[str, Any]:
     return {
         "schema": "ngo-recon-bridge/v1",
         "track_alpha_website_surface": {
-            "repo": "/home/azuramaru/ngo-domain-claim",
+            "repo": alpha_repo_path or "ngo-domain-claim",
             "total_synced": alpha_total,
             "by_stage": alpha_stages,
             "top_candidates": alpha_top,
         },
         "track_beta_contact_surface": {
-            "repo": "/home/azuramaru/ngo-mail-catch",
+            "repo": "ngo-mail-catch",
             "total_contacts": beta_total,
             "by_stage": beta_stages,
             "exclusive_candidates": beta_exclusive,

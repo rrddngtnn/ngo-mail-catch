@@ -23,6 +23,17 @@ FREEMAIL_DOMAINS = {
     "zoho.com",
     "gmx.com",
     "rediffmail.com",
+    "hotmail.co.nz",
+    "hotmail.co.uk",
+    "xtra.co.nz",
+    "slingshot.co.nz",
+    "spark.co.nz",
+    "vodafone.co.nz",
+    "clear.net.nz",
+    "btinternet.com",
+    "btopenworld.com",
+    "talktalk.net",
+    "sky.com",
 }
 
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,24})$")
