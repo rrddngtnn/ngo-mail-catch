@@ -37,3 +37,12 @@ rdap_cache_path = "private/iana_rdap_dns.json"
 rdap_cache_ttl_s = 604800
 timeout_s = 10
 workers = 8
+
+[imap]
+host = "imap.example.test"
+port = 993
+mailbox = "INBOX"
+username_env = "BETA_IMAP_USER"
+password_env = "BETA_IMAP_PASS"
+ssl = true
+limit = 25

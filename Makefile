@@ -31,3 +31,9 @@ sync-alpha:
 
 unified:
 	python3 -m ngo_mail_catch.cli unified-dashboard
+
+inbox-poll:
+	python3 -m ngo_mail_catch.cli inbox-poll
+
+inbox-links:
+	python3 -m ngo_mail_catch.cli inbox-links

@@ -57,7 +57,30 @@ CREATE TABLE IF NOT EXISTS alpha_mirror (
 
 CREATE INDEX IF NOT EXISTS ix_beta_dom   ON beta_contacts(email_domain);
 CREATE INDEX IF NOT EXISTS ix_beta_stage ON beta_contacts(stage);
+CREATE TABLE IF NOT EXISTS verification_events (
+  id               INTEGER PRIMARY KEY,
+  account_id       TEXT NOT NULL,
+  message_id       TEXT NOT NULL,
+  sender           TEXT,
+  recipient        TEXT,
+  email_domain     TEXT,
+  subject          TEXT,
+  verification_url TEXT NOT NULL,
+  token            TEXT,
+  received_at      TEXT NOT NULL,
+  UNIQUE(account_id, message_id)
+);
+
+CREATE TABLE IF NOT EXISTS imap_checkpoints (
+  account_id  TEXT PRIMARY KEY,
+  uidvalidity TEXT NOT NULL,
+  last_uid    INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS ix_beta_dom   ON beta_contacts(email_domain);
+CREATE INDEX IF NOT EXISTS ix_beta_stage ON beta_contacts(stage);
 CREATE INDEX IF NOT EXISTS ix_alpha_dom  ON alpha_mirror(root_domain);
+CREATE INDEX IF NOT EXISTS ix_ver_dom    ON verification_events(email_domain, received_at DESC);
 """
 
 
@@ -281,3 +304,67 @@ def advance_beta_stage(
         db.execute("UPDATE beta_contacts SET stage=?, updated_at=? WHERE id=?", (new_stage, now, row["id"]))
     db.commit()
     return dict(db.execute("SELECT * FROM beta_contacts WHERE id=?", (row["id"],)).fetchone())
+
+
+def save_verification_event(
+    db: sqlite3.Connection,
+    *,
+    account_id: str,
+    message_id: str,
+    sender: str,
+    recipient: str,
+    subject: str,
+    verification_url: str,
+    token: str | None,
+) -> bool:
+    """Persist a captured verification link and auto-update matching beta_contacts stage."""
+    now = utcnow()
+    rec_clean = (recipient or "").strip().lower()
+    dom = ""
+    if "@" in rec_clean:
+        dom = rec_clean.split("@", 1)[-1].strip(" >.")
+
+    cur = db.execute(
+        "SELECT id FROM verification_events WHERE account_id=? AND message_id=?",
+        (account_id, message_id),
+    ).fetchone()
+    if cur:
+        return False
+
+    db.execute(
+        """INSERT INTO verification_events(
+             account_id, message_id, sender, recipient, email_domain,
+             subject, verification_url, token, received_at
+           ) VALUES (?,?,?,?,?,?,?,?,?)""",
+        (account_id, message_id, sender, recipient, dom, subject, verification_url, token, now),
+    )
+    if dom:
+        db.execute(
+            """UPDATE beta_contacts
+               SET stage='verified_candidate',
+                   notes=?,
+                   updated_at=?
+               WHERE email_domain=? AND stage NOT IN ('claimed_goodstack', 'approved_claude')""",
+            (f"verification_url:{verification_url[:180]}", now, dom),
+        )
+    db.commit()
+    return True
+
+
+def list_verification_events(
+    db: sqlite3.Connection,
+    *,
+    domain: str | None = None,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    if domain:
+        rows = db.execute(
+            "SELECT * FROM verification_events WHERE email_domain=? ORDER BY id DESC LIMIT ?",
+            (domain.lower().strip("."), limit),
+        ).fetchall()
+    else:
+        rows = db.execute(
+            "SELECT * FROM verification_events ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]

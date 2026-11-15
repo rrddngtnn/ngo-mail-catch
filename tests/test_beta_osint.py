@@ -211,3 +211,88 @@ doh_url = "{base}/resolve"
         assert dns_rep["ready"] is False
     finally:
         srv.shutdown()
+
+
+def test_mime_ingest_and_readonly_imap_poller_offline(tmp_path: Path):
+    from ngo_mail_catch.core.store import list_verification_events, upsert_beta_contact
+    from ngo_mail_catch.inbox.poller import ingest_mime_bytes, poll_imap_readonly
+
+    db = open_db(tmp_path / "imap.sqlite")
+    upsert_beta_contact(db, {
+        "iso3": "BGD",
+        "country": "Bangladesh",
+        "registry_code": "NAB",
+        "registry_id": "3548",
+        "name": "ALO Society",
+        "contact_email": "chairman@aloseocietybd.com",
+        "email_domain": "aloseocietybd.com",
+        "gs_id": "gs_3548",
+        "gs_website_null": True,
+        "rdap_status": "AVAILABLE(404)",
+    })
+
+    raw_eml = (chr(13) + chr(10)).join([
+        "From: Goodstack Verification <no-reply@goodstack.io>",
+        "To: chairman@aloseocietybd.com",
+        "Subject: Confirm your association with ALO Society",
+        "Message-ID: <msg-001@goodstack.io>",
+        "Content-Type: text/html; charset=utf-8",
+        "",
+        '<html><body>Please confirm here: <a href="https://causes.goodstack.io/v1/agent-verifications/organisation-association?agentVerificationToken=tok_abc999">Confirm</a></body></html>',
+    ]).encode("utf-8")
+
+    class _FakeIMAP:
+        def __init__(self, host, port):
+            self.host = host
+            self.port = port
+
+        def login(self, user, pw):
+            return ("OK", [b"logged in"])
+
+        def select(self, mailbox, readonly=False):
+            assert readonly is True
+            return ("OK", [b"1"])
+
+        def status(self, mailbox, q):
+            return ("OK", [b"INBOX (UIDVALIDITY 778899)"])
+
+        def uid(self, cmd, *args):
+            if cmd == "search":
+                return ("OK", [b"10 11"])
+            if cmd == "fetch":
+                uid_val = args[0]
+                msg = raw_eml.replace(b"<msg-001@", f"<msg-{uid_val}@".encode())
+                return ("OK", [(b"1 (BODY[] {200}", msg), b")"])
+            return ("BAD", [])
+
+        def logout(self):
+            return ("BYE", [b"bye"])
+
+    rep1 = poll_imap_readonly(
+        db,
+        host="127.0.0.1",
+        port=1993,
+        username="chairman@aloseocietybd.com",
+        password="secret",
+        imap_cls=_FakeIMAP,
+    )
+    assert rep1["fetched"] == 2
+    assert rep1["matched_links"] == 2
+    assert rep1["events"][0]["token"] == "tok_abc999"
+
+    # Second poll with same UIDs should fetch 0 new messages thanks to checkpoint
+    rep2 = poll_imap_readonly(
+        db,
+        host="127.0.0.1",
+        port=1993,
+        username="chairman@aloseocietybd.com",
+        password="secret",
+        imap_cls=_FakeIMAP,
+    )
+    assert rep2["fetched"] == 0
+
+    events = list_verification_events(db, domain="aloseocietybd.com")
+    assert len(events) == 2
+
+    row = db.execute("SELECT stage FROM beta_contacts WHERE email_domain='aloseocietybd.com'").fetchone()
+    assert row["stage"] == "verified_candidate"

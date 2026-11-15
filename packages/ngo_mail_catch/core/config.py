@@ -49,6 +49,17 @@ class CorrelatorConfig:
 
 
 @dataclass
+class ImapConfig:
+    host: str = ""
+    port: int = 993
+    mailbox: str = "INBOX"
+    username_env: str = "BETA_IMAP_USER"
+    password_env: str = "BETA_IMAP_PASS"
+    ssl: bool = True
+    limit: int = 25
+
+
+@dataclass
 class BetaConfig:
     db_path: str = "private/beta_contacts.sqlite"
     bridge_file: str = "private/alpha_bridge.json"
@@ -56,6 +67,7 @@ class BetaConfig:
     user_agent: str = "ngo-mail-catch/0.2 (public-registry-research)"
     source: BetaSourceConfig = field(default_factory=BetaSourceConfig)
     correlator: CorrelatorConfig = field(default_factory=CorrelatorConfig)
+    imap: ImapConfig = field(default_factory=ImapConfig)
 
 
 def _load_toml(path: str | Path | None) -> dict[str, Any]:
@@ -78,6 +90,7 @@ def load_config(
     core_sec = raw.get("core", {})
     src_sec = raw.get("source", {})
     cor_sec = raw.get("correlator", {})
+    imap_sec = raw.get("imap", {})
 
     db_path = (
         cli.get("db")
@@ -140,6 +153,16 @@ def load_config(
         workers=int(cli.get("workers") or cor_sec.get("workers", 8)),
     )
 
+    imap_cfg = ImapConfig(
+        host=cli.get("imap_host") or os.environ.get("BETA_IMAP_HOST") or imap_sec.get("host", ""),
+        port=int(cli.get("imap_port") or os.environ.get("BETA_IMAP_PORT") or imap_sec.get("port", 993)),
+        mailbox=str(cli.get("imap_mailbox") or imap_sec.get("mailbox", "INBOX")),
+        username_env=imap_sec.get("username_env", "BETA_IMAP_USER"),
+        password_env=imap_sec.get("password_env", "BETA_IMAP_PASS"),
+        ssl=bool(imap_sec.get("ssl", True)),
+        limit=int(cli.get("imap_limit") or imap_sec.get("limit", 25)),
+    )
+
     return BetaConfig(
         db_path=db_path,
         bridge_file=bridge_file,
@@ -147,4 +170,5 @@ def load_config(
         user_agent=user_agent,
         source=src,
         correlator=cor,
+        imap=imap_cfg,
     )

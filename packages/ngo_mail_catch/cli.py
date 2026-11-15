@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -10,6 +11,7 @@ from ngo_mail_catch.core.config import load_config
 from ngo_mail_catch.core.store import (
     BETA_STAGES,
     advance_beta_stage,
+    list_verification_events,
     open_db,
     rank_beta_contacts,
     sync_alpha_bridge,
@@ -21,6 +23,7 @@ from ngo_mail_catch.correlator.verifier import (
     correlate_existing_contacts,
     scan_contact_source,
 )
+from ngo_mail_catch.inbox.poller import ingest_mime_bytes, poll_imap_readonly
 from ngo_mail_catch.parser.extract import filter_registry_contacts
 
 
@@ -59,6 +62,19 @@ def main(argv: list[str] | None = None) -> int:
 
     p_pre = sub.add_parser("preflight", help="Verify live MX, SPF, and DMARC records via DoH")
     p_pre.add_argument("--domain", required=True)
+
+    p_eml = sub.add_parser("inbox-ingest", help="Parse raw .eml file or stdin and extract verification URLs")
+    p_eml.add_argument("--file", default="-", help="Path to .eml file or - for stdin")
+
+    p_poll = sub.add_parser("inbox-poll", help="Poll read-only IMAP SSL mailbox for verification links")
+    p_poll.add_argument("--host", default=None)
+    p_poll.add_argument("--port", type=int, default=None)
+    p_poll.add_argument("--mailbox", default=None)
+    p_poll.add_argument("--limit", type=int, default=None)
+
+    p_lnks = sub.add_parser("inbox-links", help="List captured verification URLs and tokens")
+    p_lnks.add_argument("--domain", default=None)
+    p_lnks.add_argument("--limit", type=int, default=20)
 
     p_ing = sub.add_parser("ingest-contacts", help="Ingest JSON array of public registry contact records")
     p_ing.add_argument("--file", required=True)
@@ -134,6 +150,44 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "preflight":
         print(json.dumps(check_mailbox_dns(args.domain, doh_url=cfg.correlator.doh_url, timeout_s=cfg.correlator.timeout_s, user_agent=cfg.user_agent), indent=2))
+        return 0
+
+    if args.cmd == "inbox-ingest":
+        raw_bytes = sys.stdin.buffer.read() if args.file == "-" else Path(args.file).read_bytes()
+        info = ingest_mime_bytes(db, raw_bytes)
+        print(json.dumps({
+            "message_id": info["message_id"],
+            "recipient": info["recipient"],
+            "subject": info["subject"],
+            "primary_url": info["primary_url"],
+            "primary_token": info["primary_token"],
+            "saved_to_db": info["saved_to_db"],
+            "links": info["links"],
+        }, indent=2))
+        return 0
+
+    if args.cmd == "inbox-poll":
+        host = args.host or cfg.imap.host
+        port = args.port or cfg.imap.port
+        mailbox = args.mailbox or cfg.imap.mailbox
+        limit = args.limit or cfg.imap.limit
+        user = os.environ.get(cfg.imap.username_env, "").strip()
+        pw = os.environ.get(cfg.imap.password_env, "")
+        rep = poll_imap_readonly(
+            db,
+            host=host,
+            port=port,
+            mailbox=mailbox,
+            username=user,
+            password=pw,
+            limit=limit,
+            ssl_enabled=cfg.imap.ssl,
+        )
+        print(json.dumps(rep, indent=2))
+        return 0
+
+    if args.cmd == "inbox-links":
+        print(json.dumps(list_verification_events(db, domain=args.domain, limit=args.limit), indent=2))
         return 0
 
     if args.cmd == "ingest-contacts":
